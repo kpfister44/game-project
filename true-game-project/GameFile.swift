@@ -1,5 +1,46 @@
 import SwiftUI
 import AVFoundation
+
+// ─────────────────────────────────────────────────────────────────
+// AUDIO MANAGER
+// ─────────────────────────────────────────────────────────────────
+class AudioManager {
+    var bgMusic:    AVAudioPlayer?
+    var walking:    AVAudioPlayer?
+    var attack:     AVAudioPlayer?
+    var mothHurt:   AVAudioPlayer?
+    var protecSpawn: AVAudioPlayer?
+    var lightSmall: AVAudioPlayer?
+    var lightBig:   AVAudioPlayer?
+
+    init() {
+        do {
+            try AVAudioSession.sharedInstance().setCategory(.ambient, mode: .default)
+            try AVAudioSession.sharedInstance().setActive(true)
+        } catch {}
+        bgMusic     = load("Game music"); bgMusic?.numberOfLoops = -1
+        walking     = load("Walking");    walking?.numberOfLoops = -1
+        attack      = load("MothAttack")
+        mothHurt    = load("MothHurt")
+        protecSpawn = load("ProtecSpawn")
+        lightSmall  = load("lightingSmall")
+        lightBig    = load("lightningBig")
+    }
+
+    private func load(_ name: String) -> AVAudioPlayer? {
+        for subdir in ["Bfxr", nil] as [String?] {
+            if let url = Bundle.main.url(forResource: name, withExtension: "wav",
+                                         subdirectory: subdir),
+               let p = try? AVAudioPlayer(contentsOf: url) { return p }
+        }
+        return nil
+    }
+
+    func play(_ player: AVAudioPlayer?) {
+        player?.currentTime = 0; player?.play()
+    }
+}
+
 // ─────────────────────────────────────────────────────────────────
 // DESIGN CANVAS — the coordinate space the game was authored in.
 // ALL @State positions and rects live in this space forever.
@@ -17,6 +58,8 @@ private let globalScreenOffset = CGSize(width: -55, height: -25)
 
 @MainActor
 struct ContentView: View {
+
+    @State private var audio = AudioManager()
 
     // ── Scale — computed once from GeometryReader ─────────────────
     @State private var S: CGFloat = 1.0
@@ -524,6 +567,7 @@ struct ContentView: View {
                                             if !isMoving {
                                                 isMoving = true
                                                 startMovementLoop()
+                                                audio.walking?.play()
                                             }
                                         }
                                         .onEnded { _ in
@@ -531,6 +575,7 @@ struct ContentView: View {
                                             joystickVector = .zero
                                             isMoving       = false
                                             stopMovementLoop()
+                                            audio.walking?.pause()
                                             switch lastDirection {
                                             case "down":  MothSprite = "Moth Up"
                                             case "up":    MothSprite = "Moth"
@@ -582,6 +627,7 @@ struct ContentView: View {
                                             startAttackTimer()
                                             damageBatteryIfHit()
                                             startBatterySwitchTimer()
+                                            audio.play(audio.attack)
                                             coolDown = true
                                         }
                                 )
@@ -604,6 +650,7 @@ struct ContentView: View {
                 S = scaleY * 1.05 // 5% bigger
                 moveSpeed = 3.0 * S
                 startGameLoop()
+                audio.bgMusic?.play()
             }
         }
         // ── Force landscape orientation ───────────────────────────
@@ -989,6 +1036,9 @@ struct ContentView: View {
         bossBigLightSpriteRandom17 = Int.random(in: 1...4)
         moveSpeed = 3.0 * S
         reset = false
+        audio.walking?.pause()
+        audio.bgMusic?.currentTime = 0
+        audio.bgMusic?.play()
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -1102,6 +1152,7 @@ struct ContentView: View {
         if now - lastWallDamageTime >= wallDamageCooldown {
             MothHP = max(0, MothHP - wallDamageAmount)
             lastWallDamageTime = now
+            audio.play(audio.mothHurt)
         }
     }
 
@@ -1152,6 +1203,8 @@ struct ContentView: View {
                 if !attackswithtrue && !Protec {
                     MothHP = max(0, MothHP - bossAttackDamage)
                     lastBossHitTime = now
+                    audio.play(audio.mothHurt)
+                    audio.play(audio.lightSmall)
                     break
                 }
             }
@@ -1214,13 +1267,19 @@ struct ContentView: View {
         BigAttackShieldTimer?.invalidate()
         BigAttackShieldTimer = Timer.scheduledTimer(
             withTimeInterval: biggattackTime - 3, repeats: true) { _ in
-            Task { @MainActor in Protec = true }
+            Task { @MainActor in
+                Protec = true
+                self.audio.play(self.audio.protecSpawn)
+            }
         }
 
         BigAttackTimer?.invalidate()
         BigAttackTimer = Timer.scheduledTimer(
             withTimeInterval: biggattackTime, repeats: true) { _ in
-            Task { @MainActor in Bigtack = true }
+            Task { @MainActor in
+                Bigtack = true
+                self.audio.play(self.audio.lightBig)
+            }
         }
 
         BigAttackEndTimer?.invalidate()
